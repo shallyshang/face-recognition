@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>人脸识别示例</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+  <style>
+    video, canvas { position: absolute; top: 0; left: 0; }
+    #status { position: absolute; top: 10px; left: 10px; color: lime; font-size: 20px; }
+  </style>
+</head>
+<body>
+  <div id="status">加载模型中...</div>
+  <video id="video" width="360" height="270" autoplay muted></video>
+  <canvas id="overlay" width="360" height="270"></canvas>
+
+  <script>
+    const video = document.getElementById('video');
+    const statusDiv = document.getElementById('status');
+
+    // 加载模型
+    Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/weights'),
+      faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/weights'),
+      faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/weights'),
+    ]).then(startVideo);
+
+    function startVideo() {
+      navigator.mediaDevices.getUserMedia({ video: {} })
+        .then(stream => {
+          video.srcObject = stream;
+          statusDiv.innerText = "摄像头已启动";
+        })
+        .catch(err => {
+          statusDiv.innerText = "摄像头启动失败: " + err;
+        });
+    }
+
+    video.addEventListener('play', () => {
+      const canvas = document.getElementById('overlay');
+      const displaySize = { width: video.width, height: video.height };
+      faceapi.matchDimensions(canvas, displaySize);
+
+      setInterval(async () => {
+        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptors();
+
+        const resized = faceapi.resizeResults(detections, displaySize);
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        faceapi.draw.drawDetections(canvas, resized);
+        faceapi.draw.drawFaceLandmarks(canvas, resized);
+
+        if (detections.length > 0) {
+          statusDiv.innerText = "检测到人脸 ✅";
+          // 把检测结果发给 uni-app
+          window.parent.postMessage({ type: 'faceResult', data: { success: true, faces: detections.length } }, '*');
+        } else {
+          statusDiv.innerText = "未检测到人脸";
+        }
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
